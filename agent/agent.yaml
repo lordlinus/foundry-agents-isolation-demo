@@ -1,0 +1,25 @@
+kind: hosted
+name: docs-helper-agent
+description: |
+  A Foundry Hosted Agent grounded in Microsoft Learn docs (via MCP).
+  Demonstrates multi-customer isolation and built-in observability.
+metadata:
+  tags:
+    - Agent Framework
+    - Responses Protocol
+    - MCP
+    - Microsoft Learn
+protocols:
+  - protocol: responses
+    version: 1.0.0
+resources:
+  cpu: "0.5"
+  memory: 1Gi
+environment_variables:
+  - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+    # Must match the `deployments[].name` in ../azure.yaml.
+    value: "gpt-4.1-mini"
+  - name: MS_LEARN_MCP_URL
+    value: "https://learn.microsoft.com/api/mcp"
+  - name: GITHUB_PAT
+    value: ${GITHUB_PAT}

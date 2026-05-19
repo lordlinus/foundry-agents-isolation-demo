@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# azd
+.azure/
+.azd/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Build
+dist/
+build/
+
+# Internal docs / planning — keep markdown out of the published repo
+*.md
+
+# Runtime artifacts
+backend/.conversations.json
+backend/.env

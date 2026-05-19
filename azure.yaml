@@ -1,0 +1,27 @@
+name: foundry-agents-isolation-demo
+metadata:
+  template: foundry-agents-isolation-demo@1.0.0
+
+services:
+  api:
+    project: .
+    language: python
+    host: containerapp
+    docker:
+      path: backend/Dockerfile
+      context: .
+
+hooks:
+  postprovision:
+    shell: sh
+    run: |
+      echo ""
+      echo "=================================================================="
+      echo "Deployment complete."
+      echo ""
+      echo "Container App FQDN: https://${SERVICE_API_FQDN}"
+      echo ""
+      echo "Next steps:"
+      echo "  1. Set GitHub repo variable API_BASE = https://${SERVICE_API_FQDN}"
+      echo "  2. Re-run the 'Deploy UI to Pages' workflow to pick it up."
+      echo "=================================================================="

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "${AZURE_ENV_NAME}" },
+    "location": { "value": "${AZURE_LOCATION}" },
+    "resourceGroupName": { "value": "${AZURE_RESOURCE_GROUP=rg-foundry-agents-demo}" },
+    "foundryAccountResourceId": { "value": "${FOUNDRY_ACCOUNT_RESOURCE_ID}" },
+    "foundryProjectEndpoint": { "value": "${FOUNDRY_PROJECT_ENDPOINT}" },
+    "foundryAgentName": { "value": "${FOUNDRY_AGENT_NAME=docs-helper-agent}" },
+    "foundryApiVersion": { "value": "${FOUNDRY_API_VERSION=2025-11-15-preview}" },
+    "foundryFeatures": { "value": "${FOUNDRY_FEATURES=HostedAgents=V1Preview,AgentEndpoints=V1Preview}" },
+    "appInsightsName": { "value": "${APPINSIGHTS_NAME=appi-foundry-agents-demo}" }
+  }
+}

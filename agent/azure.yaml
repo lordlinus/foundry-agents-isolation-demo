@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+    extensions:
+        azure.ai.agents: '>=0.1.0-preview'
+name: ai-foundry-starter-basic
+services:
+    docs-helper-agent:
+        project: .
+        host: azure.ai.agent
+        language: docker
+        docker:
+            remoteBuild: true
+        config:
+            container:
+                resources:
+                    cpu: "0.5"
+                    memory: 1Gi
+            deployments:
+                - model:
+                    format: OpenAI
+                    name: gpt-4.1-mini
+                    version: "2025-04-14"
+                  name: gpt-4.1-mini
+                  sku:
+                    capacity: 100
+                    name: GlobalStandard
+            startupCommand: python main.py
+infra:
+    provider: bicep
+    path: ./infra
+hooks:
+    postdeploy:
+        windows:
+            shell: pwsh
+            run: ./scripts/grant-agent-identity-role.ps1
+        posix:
+            name: postdeploy
+            kind: sh
+            shell: sh
+            run: bash ./scripts/grant-agent-identity-role.sh

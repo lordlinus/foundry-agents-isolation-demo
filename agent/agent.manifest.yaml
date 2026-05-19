@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/AgentSchema/refs/heads/main/schemas/v1.0/AgentManifest.yaml
+name: docs-helper-agent
+displayName: "Docs Helper (Microsoft Learn MCP)"
+description: >
+  A Foundry Hosted Agent that answers questions grounded in official
+  Microsoft documentation via the public Microsoft Learn Docs MCP server.
+  Demonstrates multi-customer isolation (Header mode) and built-in
+  Application Insights observability.
+metadata:
+  tags:
+    - Agent Framework
+    - AI Agent Hosting
+    - Responses Protocol
+    - MCP
+    - Microsoft Learn
+template:
+  name: docs-helper-agent
+  kind: hosted
+  protocols:
+    - protocol: responses
+      version: 1.0.0
+  environment_variables:
+    - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+      value: "{{AZURE_AI_MODEL_DEPLOYMENT_NAME}}"
+    - name: MS_LEARN_MCP_URL
+      value: "https://learn.microsoft.com/api/mcp"
+    - name: GITHUB_PAT
+      value: ${GITHUB_PAT}
+resources:
+  - kind: model
+    id: gpt-4.1-mini
+    name: AZURE_AI_MODEL_DEPLOYMENT_NAME
