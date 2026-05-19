@@ -116,12 +116,20 @@ It's a shared free demo, so usage per visitor is bounded — if you see a ⛔ me
 
 ## 🛠️ Run it locally
 
-Prereqs: Python 3.12+, Azure CLI, an existing Foundry project with a deployed hosted agent.
+You need **a Foundry hosted agent deployed first** — the proxy is just a thin shim that forwards requests to one. If you don't have a project + agent yet, follow Microsoft's [Deploy a hosted agent with `azd` quickstart](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agents), or use the reference agent included in this repo:
 
 ```bash
-git clone https://github.com/lordlinus/foundry-agents-isolation-demo
-cd foundry-agents-isolation-demo
+# 1. Deploy the included reference agent to your Foundry project
+cd agent
+azd auth login
+azd up                # creates Foundry account/project (if needed) + deploys docs-helper-agent
+cd ..
+```
 
+That gives you a `FOUNDRY_PROJECT_ENDPOINT` and a hosted agent named `docs-helper-agent`.
+
+```bash
+# 2. Run the proxy + UI locally
 az login                              # the proxy uses your token via DefaultAzureCredential
 cp backend/.env.example backend/.env  # then edit FOUNDRY_PROJECT_ENDPOINT
 ./start.sh                            # creates .venv, installs deps, runs uvicorn on :8080
@@ -129,14 +137,24 @@ cp backend/.env.example backend/.env  # then edit FOUNDRY_PROJECT_ENDPOINT
 
 Open <http://localhost:8080/>. The FastAPI app serves both the proxy and the UI in one process.
 
+> Prereqs: Python 3.12+, Azure CLI (`az`), and Azure Developer CLI (`azd`) if you're deploying the agent.
+
 ---
 
 ## ☁️ Deploy your own copy to Azure
 
-Prereqs: [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd), an Azure subscription, and an existing Foundry / Azure AI Services account with a deployed hosted agent.
+You need a Foundry hosted agent first. If you don't have one yet, deploy the reference agent included under `agent/`:
 
 ```bash
+cd agent
 azd auth login
+azd up                # provisions Foundry resources + deploys docs-helper-agent
+cd ..
+```
+
+Then deploy this proxy + UI:
+
+```bash
 azd env new my-foundry-demo --subscription <SUB_ID> --location southeastasia
 
 azd env set FOUNDRY_ACCOUNT_RESOURCE_ID "/subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.CognitiveServices/accounts/<NAME>"
