@@ -141,18 +141,9 @@ Open <http://localhost:8080/>. The FastAPI app serves both the proxy and the UI 
 
 ---
 
-## ☁️ Deploy your own copy to Azure
+## ☁️ Deploy the proxy (middleware) to Azure
 
-You need a Foundry hosted agent first. If you don't have one yet, deploy the reference agent included under `agent/`:
-
-```bash
-cd agent
-azd auth login
-azd up                # provisions Foundry resources + deploys docs-helper-agent
-cd ..
-```
-
-Then deploy this proxy + UI:
+The proxy is what your browser actually calls — it stamps the isolation headers and forwards to Foundry. Once you have a hosted agent (see above), deploy this proxy to Azure Container Apps:
 
 ```bash
 azd env new my-foundry-demo --subscription <SUB_ID> --location southeastasia
