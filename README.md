@@ -21,6 +21,34 @@ Three nested workspace boundaries, all enforced by Foundry — not by the agent 
 
 The browser visualises every key as you click through the tree. The agent itself is just `docs-helper-agent` — a small MCP-grounded helper. The point of the demo is the **plumbing around the agent**, not the agent.
 
+> "Workspace key" is a UI label this demo uses for readability. On the platform, isolation is driven by the two `x-ms-*-isolation-key` headers below.
+
+---
+
+## How Foundry actually enforces it
+
+A single hosted agent definition (one container image, one set of weights, one set of tools) can serve unlimited isolated workspaces because routing happens at the **platform layer**, before your container runs:
+
+- Every request carries two opaque headers stamped by your trusted proxy:
+  - `x-ms-user-isolation-key` — broader bucket (typically tenant / user)
+  - `x-ms-chat-isolation-key` — narrower bucket inside it (typically thread / channel)
+- Foundry uses `(agent, user-key, chat-key)` to **select or create a session**. Each session is a VM-isolated sandbox with a persistent `$HOME` filesystem (and `/files` mount) that's automatically restored on resume.
+- Sessions hibernate after 15 minutes idle and persist for up to 30 days. Disk survives idle; memory does not.
+- The agent container **never sees the isolation key headers** — Foundry consumes them and just hands the container the right `$HOME`. A buggy agent cannot path-traverse into another workspace because the mount namespace doesn't expose it.
+
+**You have to trust two things:**
+1. Foundry honours the headers (platform-level guarantee — same trust class as Azure RBAC).
+2. Your proxy stamps headers derived from a **trusted user identity** — never a value the browser controls. In this demo, since access is open, each browser gets its own random `vid-<hex>` so no visitor can target another's slice.
+
+### Reference docs
+
+- [Hosted agents — overview](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents) (per-session VM isolation, `$HOME`, `/files`, scale-to-zero with stateful resume)
+- [Sessions and conversations](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents#sessions-and-conversations) — lifecycle, 15-min idle, 30-day session lifetime
+- [Responses protocol](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents#protocols-responses-and-invocations) — the OpenAI-compatible endpoint this demo calls
+- [Agent identity](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agent-identity) — the per-agent Entra ID that authenticates downstream calls
+- [Foundry RBAC](https://learn.microsoft.com/en-us/azure/foundry/concepts/rbac-foundry) — Foundry User / Owner roles assigned to your managed identity
+- [Quickstart: deploy a hosted agent with azd](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agents)
+
 ---
 
 ## Architecture
