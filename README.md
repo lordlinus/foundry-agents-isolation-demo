@@ -11,6 +11,7 @@
 You built an AI agent. Great. Now imagine you want **two different customers** using it — Contoso and Fabrikam. Or two different users inside Contoso — Alice and Bob. Or the same user across two chat threads.
 
 You need each conversation to have its **own private scratch space**:
+
 - Files Alice asks the agent to save shouldn't appear in Bob's session
 - Notes pinned in "Thread 1" shouldn't leak into "Thread 2"
 - Contoso's team channel should be a shared workspace, but Fabrikam can't see it
@@ -39,6 +40,7 @@ Contoso Ltd.                       Fabrikam Inc.
 ```
 
 Each tile fires a request when you click it. The UI shows:
+
 - 🔑 The **isolation keys** stamped on the request
 - 🎨 A **colour-coded session bubble** for each unique sandbox the platform created
 - 🔁 What happens on a second click (resume!) vs a click on a sibling tile (new sandbox)
@@ -61,6 +63,7 @@ Foundry hashes the tuple `(agent, user-key, chat-key)` to **pick or create a ses
 That's the whole trick. Your agent code never sees the headers — it just sees its own filesystem. A bug in agent code physically **cannot** read another workspace because the path doesn't exist in its mount namespace.
 
 **Two trust assumptions:**
+
 1. The platform honours the headers (Microsoft's job — same trust level as Azure RBAC).
 2. Your proxy stamps headers derived from a **trusted user identity** — never something the browser invented. (Otherwise a bad actor types `?user=ceo` and reads the CEO's notes.)
 
@@ -156,21 +159,25 @@ azd up
 ```
 
 `azd up` provisions a resource group with:
+
 - Azure Container Apps (scale-to-zero, public ingress)
 - A user-assigned Managed Identity granted `Foundry User` + `Cognitive Services User` on the Foundry account
 - Azure Container Registry (Basic), Log Analytics, Application Insights
 
 When it's done you'll see:
+
 ```
 - Endpoint: https://ca-foundry-agents-demo.<hash>.<region>.azurecontainerapps.io/
 ```
 
 Re-deploy after code changes:
+
 ```bash
 azd deploy api
 ```
 
 tear everything down:
+
 ```bash
 azd down --purge
 ```
