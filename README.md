@@ -179,23 +179,10 @@ Re-deploy after code changes:
 azd deploy api
 ```
 
-Tear everything down:
+tear everything down:
 ```bash
 azd down --purge
 ```
-
-### Wire your fork to GitHub Pages
-
-The included `.github/workflows/pages.yml` publishes `ui/` to Pages on every push:
-
-1. **Settings → Pages** → Source = **GitHub Actions**.
-2. **Settings → Secrets and variables → Actions → Variables** → add `API_BASE` = your Container App URL.
-3. Push to `main`. The workflow stamps `API_BASE` into `ui/config.js` and deploys.
-4. Allow your Pages origin on the backend:
-   ```bash
-   azd env set ALLOWED_ORIGINS "https://<you>.github.io,http://localhost:8080"
-   azd deploy api
-   ```
 
 ---
 
