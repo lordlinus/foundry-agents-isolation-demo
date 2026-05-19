@@ -28,3 +28,4 @@ build/
 # Runtime artifacts
 backend/.conversations.json
 backend/.env
+!README.md
