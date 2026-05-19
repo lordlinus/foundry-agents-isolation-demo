@@ -1,0 +1,14 @@
+.venv/
+.git/
+.azure/
+.github/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+TALK*.md
+scenarios.http
+backend/.env
+backend/.conversations.json
+backend/__pycache__/

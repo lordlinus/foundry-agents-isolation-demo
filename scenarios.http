@@ -1,0 +1,354 @@
+### =============================================================================
+### Foundry Hosted Agents — Multi-Customer Isolation Scenarios
+### =============================================================================
+### Showcases the 2-key isolation matrix from
+### https://ankitbko.github.io/blog/2026/05/hosted-agents-part-2/
+### through the demo proxy at backend/server.py.
+###
+### USAGE
+### -----
+### 1. Start the backend:    ./start.sh
+### 2. Open this file in VS Code with the "REST Client" extension
+###    (humao.rest-client) and click "Send Request" above each block.
+### 3. NO copy/paste required. Multi-step scenarios chain via REST Client
+###    request variables: a `# @name X` block exposes its JSON response as
+###    `{{X.response.body.<jsonpath>}}` to later requests in this file.
+###    `/api/chat` returns SSE (not parseable), so each scenario follows
+###    its first POST with a `GET /api/history` (named e.g. `histA1`) that
+###    returns a JSON `{ session_id, ... }`. The follow-up POST then sends
+###    `"session_id": "{{histA1.response.body.session_id}}"` automatically.
+###    Just click Send Request top-to-bottom within a scenario.
+###
+### ALL responses are SSE (text/event-stream). Look for these landmark events:
+###   event: meta            ← what the proxy is about to send to Foundry
+###   event: session         ← Foundry's agent_session_id (capture this!)
+###   data: {"type":"response.completed", ...}  ← end of turn
+###
+### -----------------------------------------------------------------------------
+### Variables — edit @host if your proxy runs on a different port.
+### -----------------------------------------------------------------------------
+@host = http://localhost:8080
+@contentType = application/json
+
+### Health check — confirm proxy is up.
+GET {{host}}/api/health
+
+### Show the live customer + user roster the proxy knows about.
+GET {{host}}/api/customers
+
+### Show the proxy config (Foundry endpoint, agent name, api version).
+GET {{host}}/api/config
+
+
+### =============================================================================
+### SCENARIO A — Same person continues a chat (session resumption)
+### =============================================================================
+### Story: Alice asks two questions in the same private thread. The platform
+### must resume the same workspace and the agent must have prior context.
+###
+### Expected: Step 2 returns the SAME agent_session_id as step 1.
+### -----------------------------------------------------------------------------
+
+### A.1 — Alice plants a tag
+# @name A1
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "message": "Plant tag ATLAS-7 in this conversation."
+}
+
+### A.1b — Look up A.1's session_id from the proxy log (JSON, chainable)
+# @name histA1
+GET {{host}}/api/history?customer=contoso&user=alice&thread=thread-1&share_mode=private
+
+### A.2 — Alice follows up using the SAME thread + auto-resolved session_id
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "session_id": "{{histA1.response.body.session_id}}",
+  "message": "What was my previous message? Quote it verbatim."
+}
+### Look for: same agent_session_id in the response → session resumed.
+
+
+### =============================================================================
+### SCENARIO B — Cross-user (same tenant) — sessions diverge
+### =============================================================================
+### Story: Two coworkers at the same customer (Alice + Bob at Contoso) chat
+### in private threads with the same name. They must NOT see each other's data.
+###
+### Expected: Bob's chat-key includes his user id, so it differs from Alice's.
+### Bob gets a fresh session; the agent has no knowledge of Alice's tag.
+### -----------------------------------------------------------------------------
+
+### B.1 — Alice plants a tag in her own private thread-1
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "message": "Plant tag BLUE-44."
+}
+### Note her chat-key from `event: meta`: contoso-alice-…
+
+### B.2 — Bob (same tenant!) opens his own private thread-1
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "bob",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "message": "What tag did the previous message in this conversation mention?"
+}
+### Bob's chat-key: contoso-bob-… (different from Alice's).
+### Different agent_session_id, no shared history. ✅ Cross-user isolation.
+
+
+### =============================================================================
+### SCENARIO C — Cross-tenant — total isolation
+### =============================================================================
+### Story: Two completely different customers use the same agent. Even
+### identical thread names must produce isolated workspaces.
+###
+### Expected: Both isolation keys differ; sessions can never cross tenants.
+### -----------------------------------------------------------------------------
+
+### C.1 — Alice@Contoso plants a tag
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "message": "Plant tag CONTOSO-NORTH."
+}
+
+### C.2 — Carol@Fabrikam opens a thread with the same name
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "fabrikam",
+  "user": "carol",
+  "thread": "thread-1",
+  "share_mode": "private",
+  "message": "What tag was mentioned in the previous turn?"
+}
+### user-key changes (user-alice → user-carol).
+### chat-key changes (contoso-alice-… → fabrikam-carol-…).
+### Fresh agent_session_id. ✅ Cross-tenant isolation.
+
+
+### =============================================================================
+### SCENARIO D — Shared team channel ✨ (the killer demo)
+### =============================================================================
+### Story: Alice and Bob (same tenant) collaborate in a shared #project-x
+### channel. They must SEE THE SAME conversation while each user's per-user
+### resources (OAuth, memory) stay private.
+###
+### Expected: Both produce the SAME chat-key (because shared mode omits the
+### user from the derivation), so Foundry returns the SAME agent_session_id.
+### user-keys still differ (so per-user memory/OAuth would be private).
+### -----------------------------------------------------------------------------
+
+### D.1 — Alice posts in shared #project-x
+# @name D1
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "channel-projectx",
+  "share_mode": "shared",
+  "message": "Hi team, this is Alice. Topic: evaluating Foundry hosted agents."
+}
+
+### D.1b — Resolve D.1's session_id from history (shared scope is keyed by chat-key,
+###        so Bob will see the same session_id in his own history lookup too).
+# @name histD1
+GET {{host}}/api/history?customer=contoso&user=alice&thread=channel-projectx&share_mode=shared
+
+### D.2 — Bob (same tenant) joins the SAME shared channel — session_id auto-filled
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "bob",
+  "thread": "channel-projectx",
+  "share_mode": "shared",
+  "session_id": "{{histD1.response.body.session_id}}",
+  "message": "This is Bob joining. What did Alice say in the previous message?"
+}
+### Bob's chat-key MATCHES Alice's: contoso-shared-…
+### Bob's user-key DIFFERS from Alice's: user-bob vs user-alice.
+### Same agent_session_id reused. ✅ Teams-channel pattern.
+
+
+### =============================================================================
+### SCENARIO E — Shared channel + cross-tenant — still isolated
+### =============================================================================
+### Story: Contoso and Fabrikam both have a channel called #project-x.
+### Even in shared mode, the platform must keep them apart — competitors
+### can't snoop just by guessing channel names.
+###
+### Expected: Backend namespaces shared chat-keys by tenant prefix, so
+### contoso-shared-… ≠ fabrikam-shared-…. Different sessions.
+### -----------------------------------------------------------------------------
+
+### E.1 — Alice@Contoso in shared #project-x
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "channel-projectx",
+  "share_mode": "shared",
+  "message": "Note: Contoso's tag is PROJ-ALPHA-9."
+}
+
+### E.2 — Carol@Fabrikam in shared #project-x (same channel name!)
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "fabrikam",
+  "user": "carol",
+  "thread": "channel-projectx",
+  "share_mode": "shared",
+  "message": "What tag was mentioned in the previous turn of this channel?"
+}
+### Different chat-keys (contoso-shared-… vs fabrikam-shared-…).
+### Different agent_session_id. ✅ Multi-tenant safety even for shared chats.
+
+
+### =============================================================================
+### SCENARIO F — Default-scope vs explicit chat-key
+### =============================================================================
+### Story: When the proxy sends NO x-ms-chat-isolation-key header at all,
+### Foundry falls back to a default scope derived from the user-key alone.
+### This default scope is its own partition — invisible to requests that
+### DO send a chat-key, and vice versa.
+###
+### Expected: Two requests from the same user to the same thread name —
+### one with `omit_chat_key:true`, one without — produce DIFFERENT sessions.
+### -----------------------------------------------------------------------------
+
+### F.1 — Alice WITHOUT chat-key (default scope)
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-2",
+  "share_mode": "private",
+  "omit_chat_key": true,
+  "message": "Hi from the default scope. Tag: SCOPE-DEFAULT-1."
+}
+### Inspect `event: meta`: chat_key is null, chat_key_omitted is true.
+
+### F.2 — Same Alice, same thread, but NOW with explicit chat-key
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-2",
+  "share_mode": "private",
+  "message": "Now with chat-key. What tag was mentioned in the previous turn?"
+}
+### Different agent_session_id from F.1 — the explicit chat-key partition is
+### independent from the default scope. ✅ "No chat-key" is its own world.
+
+
+### =============================================================================
+### SCENARIO G — Session-id mismatch (experimental)
+### =============================================================================
+### Story: A malicious user obtains another user's agent_session_id and
+### tries to resume that session under their own keys. Per the blog the
+### platform should reject the attempt — chat-key is the actual gate.
+###
+### NOTE: Foundry's behaviour for the `agent_session_id` field on POST
+### /endpoint/protocols/openai/responses depends on platform version. The
+### blog demonstrates 403 on GET /sessions/{id} with a wrong key (see G.3).
+### POST may silently assign a fresh session, return the same id, or 403.
+### -----------------------------------------------------------------------------
+
+### G.1 — Alice creates a session in a private thread
+# @name G1
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "alice",
+  "thread": "thread-secret",
+  "share_mode": "private",
+  "message": "Establish this session. Tag: ALICE-SECRET-42."
+}
+
+### G.1b — Resolve Alice's session_id (so G.2 can attempt to spoof it as Bob)
+# @name histG1
+GET {{host}}/api/history?customer=contoso&user=alice&thread=thread-secret&share_mode=private
+
+### G.2 — Bob tries to resume Alice's session id under HIS own keys (auto-filled)
+POST {{host}}/api/chat
+Content-Type: {{contentType}}
+
+{
+  "customer": "contoso",
+  "user": "bob",
+  "thread": "thread-secret",
+  "share_mode": "private",
+  "session_id": "{{histG1.response.body.session_id}}",
+  "message": "What tag did the previous turn mention?"
+}
+### Either Foundry assigns Bob a different session, returns an error event,
+### or (depending on platform behaviour) silently honours the id without
+### actually granting access to the conversation history.
+
+### G.3 — Verify isolation via the SESSIONS LIST endpoint (more deterministic)
+###   Listing sessions with Bob's keys should NOT include Alice's session id.
+GET {{host}}/api/sessions?customer=contoso&user=bob&thread=thread-secret&share_mode=private
+
+###   Listing sessions with Alice's keys SHOULD include it.
+GET {{host}}/api/sessions?customer=contoso&user=alice&thread=thread-secret&share_mode=private
+
+
+### =============================================================================
+### Quick reference — what the proxy derives for each (customer, user, mode, thread)
+### =============================================================================
+###
+###   user-key  = "user-<user>"                       (per end-user)
+###
+###   chat-key (private) = "<customer>-<user>-<sha256(customer:user:thread)[:24]>"
+###     → unique per (tenant, user, thread) — Alice's "Thread 1" ≠ Bob's "Thread 1"
+###
+###   chat-key (shared)  = "<customer>-shared-<sha256(customer:thread)[:24]>"
+###     → unique per (tenant, thread) — same across all users in that tenant
+###       (Teams-channel pattern), but still namespaced by tenant.
+###
+###   omit_chat_key=true → no x-ms-chat-isolation-key header at all.
+###     → platform uses a default scope derived from user-key. This is its own
+###       partition, separate from any explicit chat-key partition.

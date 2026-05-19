@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foundry Hosted Agents — Isolation Demo</title>
+  <style>
+    :root {
+      --bg: #0b1020; --panel: #131a30; --panel2: #1b2240; --border: #2a3358;
+      --text: #e6e8ef; --muted: #8b93b3; --accent: #5b8cff; --accent2: #9b6bff;
+      --good: #4ade80; --warn: #facc15; --bad: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 12px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(11,16,32,0.85); backdrop-filter: blur(8px); flex-shrink: 0;
+    }
+    header .logo {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: grid; place-items: center; font-weight: 700; color: white; font-size: 14px;
+    }
+    header h1 { font-size: 15px; font-weight: 600; }
+    header .sub { color: var(--muted); font-size: 12px; }
+    header .spacer { flex: 1; }
+    .pill { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+    .pill b { color: var(--text); font-weight: 600; }
+
+    /* ── Main ── */
+    main { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 32px 24px 48px; }
+    .intro { max-width: 680px; text-align: center; margin-bottom: 28px; }
+    .intro h2 { font-size: 22px; margin-bottom: 6px; }
+    .intro p { color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+    /* ── Tree ── */
+    .tree { display: flex; flex-direction: column; align-items: center; gap: 0; }
+    .tree-level { display: flex; justify-content: center; gap: 40px; position: relative; }
+    .tree-connector {
+      width: 2px; height: 24px; background: var(--border); margin: 0 auto;
+    }
+    .tree-branches {
+      display: flex; justify-content: center; position: relative;
+      padding-top: 24px;
+    }
+    /* Horizontal bar connecting all branches — stretches from first to last branch center */
+    .tree-branches::before {
+      content: ""; position: absolute; top: 0;
+      left: 0; right: 0;
+      height: 0; border: none;
+    }
+    /* Vertical stem from parent down to the horizontal bar */
+    .tree-branches::after {
+      content: ""; position: absolute; top: -2px;
+      left: 50%; width: 2px; height: 26px;
+      background: var(--border);
+    }
+    .tree-branch {
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 200px; position: relative;
+      padding-top: 0;
+    }
+    /* Vertical drop line from horizontal bar to node — hidden for single-child branches */
+    .tree-branch::before {
+      content: ""; width: 2px; height: 24px; background: var(--border);
+    }
+    /* Horizontal bar: drawn as a border-top on a pseudo-element spanning all branches */
+    .tree-branches > .tree-branch:first-child::after,
+    .tree-branches > .tree-branch:last-child::after {
+      content: ""; position: absolute; top: 0;
+      height: 2px; background: var(--border);
+    }
+    .tree-branches > .tree-branch:first-child::after {
+      left: 50%; right: 0;
+    }
+    .tree-branches > .tree-branch:last-child::after {
+      left: 0; right: 50%;
+    }
+    /* Middle branches get a full-width bar */
+    .tree-branches > .tree-branch:not(:first-child):not(:last-child)::after {
+      content: ""; position: absolute; top: 0;
+      left: 0; right: 0;
+      height: 2px; background: var(--border);
+    }
+    /* Single-child: no horizontal bar needed, just the vertical connector */
+    .tree-branches > .tree-branch:only-child::after {
+      display: none;
+    }
+
+    /* ── Node card ── */
+    .node {
+      background: var(--panel); border: 2px solid var(--border); border-radius: 12px;
+      padding: 14px 18px; text-align: center; min-width: 180px; max-width: 280px;
+      position: relative; transition: border-color .3s, box-shadow .3s;
+    }
+    .node.tenant { border-color: var(--accent); min-width: 220px; }
+    .node.user { border-color: var(--accent2); }
+    .node.chat { border-color: var(--border); cursor: pointer; }
+    .node.chat:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(91,140,255,0.15); }
+    .node .tag {
+      position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+    }
+    .node.tenant .tag { background: var(--accent); color: white; }
+    .node.user .tag { background: var(--accent2); color: white; }
+    .node.chat .tag { background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+    .node .name { font-size: 15px; font-weight: 600; margin: 4px 0; }
+    .node .detail { font-size: 11px; color: var(--muted); line-height: 1.4; margin-top: 4px; }
+    .node .key {
+      font-family: ui-monospace, monospace; font-size: 10px; margin-top: 6px;
+      padding: 4px 8px; border-radius: 6px; background: var(--panel2);
+      word-break: break-all; line-height: 1.3; text-align: left;
+    }
+    .node .key .k { color: var(--muted); }
+    .node .key .vu { color: #4ade80; }
+    .node .key .vc { color: #facc15; }
+    .node .key .vs { color: #c084fc; }
+    .node .session-badge {
+      display: inline-block; margin-top: 6px; font-size: 10px; font-weight: 600;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: 0.03em;
+    }
+    .node .session-badge.pending { background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+    .node .session-badge.live { color: white; }
+    .node .run-btn {
+      margin-top: 8px; padding: 7px 16px; border-radius: 7px; border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white; font-weight: 600; font-size: 12px; cursor: pointer;
+      font-family: inherit;
+    }
+    .node .run-btn:hover { filter: brightness(1.1); }
+    .node .run-btn.done { background: var(--panel2); border: 1px solid var(--good); color: var(--good); }
+    .node .preview {
+      margin-top: 6px; font-size: 11px; color: var(--muted); line-height: 1.35;
+      max-height: 48px; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* Session color coding — nodes with the same session get the same glow */
+    .node.sess-a { border-color: #4ade80; box-shadow: 0 0 14px rgba(74,222,128,0.2); }
+    .node.sess-b { border-color: #f472b6; box-shadow: 0 0 14px rgba(244,114,182,0.2); }
+    .node.sess-c { border-color: #facc15; box-shadow: 0 0 14px rgba(250,204,21,0.2); }
+    .node.sess-d { border-color: #38bdf8; box-shadow: 0 0 14px rgba(56,189,248,0.2); }
+    .node.sess-e { border-color: #c084fc; box-shadow: 0 0 14px rgba(192,132,252,0.2); }
+
+    /* ── Legend ── */
+    .legend {
+      margin-top: 32px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+      font-size: 12px; color: var(--muted);
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-item .swatch { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; }
+
+    /* ── Session summary panel ── */
+    .sessions-panel {
+      margin-top: 36px; width: 100%; max-width: 1100px;
+    }
+    .sessions-panel h3 {
+      font-size: 16px; font-weight: 600; margin: 0 0 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .sessions-panel h3 .count {
+      font-size: 12px; font-weight: 500; color: var(--muted);
+      background: var(--panel2); padding: 2px 9px; border-radius: 999px;
+    }
+    .sessions-empty {
+      color: var(--muted); font-size: 13px; text-align: center;
+      padding: 18px; background: var(--panel); border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+    .session-groups {
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .session-bubble {
+      border: 2px solid var(--border); border-radius: 14px;
+      padding: 14px 16px; position: relative;
+      background: var(--panel);
+    }
+    .session-bubble.sess-a { border-color: #4ade80; background: rgba(74,222,128,0.04); }
+    .session-bubble.sess-b { border-color: #f472b6; background: rgba(244,114,182,0.04); }
+    .session-bubble.sess-c { border-color: #facc15; background: rgba(250,204,21,0.04); }
+    .session-bubble.sess-d { border-color: #38bdf8; background: rgba(56,189,248,0.04); }
+    .session-bubble.sess-e { border-color: #c084fc; background: rgba(192,132,252,0.04); }
+    .session-bubble .sess-hdr {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .session-bubble .sess-id {
+      font-family: ui-monospace, monospace; font-size: 11px;
+      padding: 3px 10px; border-radius: 999px; font-weight: 600;
+      color: white;
+    }
+    .session-bubble.sess-a .sess-id { background: #4ade80; color: #0b1020; }
+    .session-bubble.sess-b .sess-id { background: #f472b6; color: #0b1020; }
+    .session-bubble.sess-c .sess-id { background: #facc15; color: #0b1020; }
+    .session-bubble.sess-d .sess-id { background: #38bdf8; color: #0b1020; }
+    .session-bubble.sess-e .sess-id { background: #c084fc; color: #0b1020; }
+    .session-bubble .sess-label {
+      font-size: 12px; color: var(--muted);
+    }
+    .session-bubble .sess-members {
+      display: flex; gap: 10px; flex-wrap: wrap;
+    }
+    .sess-member {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--panel2); border: 1px solid var(--border); border-radius: 9px;
+      padding: 8px 12px; min-width: 180px; cursor: pointer;
+      transition: border-color .15s;
+    }
+    .sess-member:hover { border-color: var(--accent); }
+    .sess-member .sm-icon { font-size: 18px; }
+    .sess-member .sm-info { display: flex; flex-direction: column; gap: 1px; }
+    .sess-member .sm-name { font-size: 13px; font-weight: 600; }
+    .sess-member .sm-detail { font-size: 10.5px; color: var(--muted); }
+    .sess-member .sm-preview {
+      font-size: 11px; color: var(--muted); margin-top: 2px;
+      max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sess-verdict {
+      margin-top: 8px; font-size: 12px; padding: 6px 10px; border-radius: 7px;
+      background: rgba(0,0,0,0.15); line-height: 1.45;
+    }
+    .sess-verdict b { color: var(--good); }
+    .sess-verdict .warn { color: var(--warn); }
+
+    /* ── Modal ── */
+    .modal-bg {
+      display: none; position: fixed; inset: 0;
+      background: rgba(8,10,22,0.75); backdrop-filter: blur(4px);
+      z-index: 100; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      width: min(780px, 100%); max-height: 85vh; display: flex; flex-direction: column;
+      overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .modal-hdr {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .modal-hdr h3 { font-size: 14px; flex: 1; }
+    .modal-hdr .close-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .modal-hdr .close-btn:hover { color: var(--text); border-color: var(--accent); }
+    .modal-suggested {
+      padding: 8px 16px; border-bottom: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 6px; background: var(--panel2);
+    }
+    .modal-suggested .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; align-self: center; margin-right: 4px; }
+    .send-chip {
+      font-size: 12px; padding: 5px 10px; border-radius: 999px;
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      cursor: pointer;
+    }
+    .send-chip:hover { border-color: var(--accent2); }
+    .modal-chat { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+    .modal-chat .empty-msg { color: var(--muted); text-align: center; margin: auto; font-size: 13px; }
+    .msg { display: flex; flex-direction: column; gap: 3px; max-width: 85%; }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.bot { align-self: flex-start; }
+    .bubble {
+      padding: 10px 13px; border-radius: 10px; font-size: 13.5px; line-height: 1.5;
+      white-space: pre-wrap; word-wrap: break-word;
+    }
+    .msg.user .bubble { background: #243260; border: 1px solid #344785; }
+    .msg.bot .bubble { background: #182040; border: 1px solid var(--border); }
+    .bubble a { color: var(--accent); }
+    .bubble code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .bubble pre { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+    .msg .stamp { font-size: 10px; color: var(--muted); font-family: ui-monospace,monospace; }
+    .modal-foot {
+      padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px;
+    }
+    .modal-foot textarea {
+      flex: 1; resize: none; padding: 8px 11px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--panel2);
+      color: var(--text); font: inherit; font-size: 13px; line-height: 1.4;
+      min-height: 38px; max-height: 150px;
+    }
+    .modal-foot textarea:focus { outline: none; border-color: var(--accent); }
+    .modal-foot button {
+      padding: 8px 18px; border-radius: 8px; border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .typing { display: inline-flex; gap: 4px; }
+    .typing span { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100% { opacity:.25; } 40% { opacity:1; } }
+    .toast { position:fixed; bottom:18px; right:18px; background:var(--panel2); border:1px solid var(--bad); color:var(--text); padding:10px 14px; border-radius:8px; font-size:13px; max-width:360px; box-shadow:0 8px 24px rgba(0,0,0,0.4); animation:fadein .2s ease; z-index:200; }
+    @keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; } }
+
+    /* Request router explainer (collapsible) */
+    .gk-panel {
+      margin: 0 auto 18px; max-width: 1400px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    }
+    .gk-panel > summary {
+      cursor: pointer; padding: 12px 16px;
+      font-weight: 600; font-size: 14px; color: var(--text);
+      background: linear-gradient(135deg, rgba(91,140,255,0.08), rgba(155,107,255,0.08));
+      list-style: none;
+      border-radius: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .gk-panel[open] > summary { border-radius: 12px 12px 0 0; }
+    .gk-panel > summary::-webkit-details-marker { display: none; }
+    .gk-panel > summary .sum-arrow {
+      margin-left: auto; transition: transform .15s ease; color: var(--muted);
+    }
+    .gk-panel[open] > summary .sum-arrow { transform: rotate(90deg); }
+    .gk-body { padding: 16px 20px 20px; }
+    .gk-body .mermaid {
+      background: white; border-radius: 8px; padding: 14px; min-height: 200px;
+      display: flex; justify-content: center; overflow-x: auto;
+      color: #111;
+    }
+    .gk-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+    .gk-table th, .gk-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .gk-table th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+    .gk-table .yes { color: var(--good); font-weight: 600; }
+    .gk-table .no  { color: var(--muted); }
+    .gk-takeaway {
+      margin-top: 14px; padding: 10px 12px; border-left: 3px solid var(--accent);
+      background: rgba(91,140,255,0.07); border-radius: 4px; font-size: 13px; color: var(--text);
+    }
+  </style>
+  <script src="./mermaid.min.js"></script>
+  <script src="./config.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">F</div>
+    <div>
+      <h1>Foundry Hosted Agents — Isolation Demo</h1>
+      <div class="sub">Interactive tree · click any chat node to run it live</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill" title="Per-browser visitor id — your session is isolated from other testers. Click 'Reset session' to rotate.">visitor: <b id="visitorPill">…</b></div>
+    <button id="resetBtn" class="pill" style="cursor:pointer; background:var(--bad, #f87171); color:white; border:none; font:inherit; font-weight:600;" title="Clear your chat state and rotate your visitor id">↻ Reset session</button>
+    <div class="pill">mode: <b id="modePill">…</b></div>
+    <div class="pill">agent: <b id="agentPill">…</b></div>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h2>How session isolation works</h2>
+      <p>Each <b>group</b> has <b>users</b>. A group can be a customer, business unit, region, or department. Each user can have <b>private chats</b> or join <b>shared channels</b> within the group — click any chat node below to run it live and watch the session ids appear.</p>
+    </div>
+
+    <details class="gk-panel" id="gkPanel" open>
+      <summary>🛡️ How the request router works <span class="sum-arrow">▸</span></summary>
+      <div class="gk-body">
+        <pre class="mermaid">flowchart LR
+    User([Browser / API client])
+
+    subgraph GK["Request router"]
+        direction TB
+        ID["Who is this?"]
+        KEY["Build the workspace key"]
+        TAG["Add tracking ID"]
+        ID --> KEY --> TAG
+    end
+
+    subgraph PLATFORM["Foundry hosted agent"]
+        direction TB
+        ROUTE["Workspace key selects sandbox"]
+        SBX1["Contoso / Alice / Thread 1<br/>private workspace"]
+        SBX2["Fabrikam / Carol / #project-x<br/>different workspace"]
+        ROUTE --> SBX1
+        ROUTE --> SBX2
+    end
+
+    AUDIT[("Application Insights<br/>audit trail")]
+
+    User -->|raw identity| GK
+    GK -->|workspace key only| PLATFORM
+    GK -.->|tracking ID| AUDIT
+    PLATFORM -.->|agent trace| AUDIT
+        </pre>
+
+        <table class="gk-table">
+          <thead>
+            <tr><th>Layer</th><th>Sees raw group identity?</th><th>Enforces group separation?</th><th>Holds working memory?</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Browser / API client</td><td class="yes">yes</td><td class="no">no</td><td class="no">no</td></tr>
+            <tr><td>Request router (<code>backend/server.py</code>)</td><td class="yes">yes</td><td>builds the workspace key</td><td class="no">no</td></tr>
+            <tr><td>Foundry platform</td><td class="no">no — only sees the workspace key</td><td class="yes">yes — the workspace boundary</td><td>hosts the workspace</td></tr>
+            <tr><td>AI agent (<code>agent/main.py</code>)</td><td class="no">no — only sees scoped context</td><td class="no">no (and doesn't need to)</td><td class="yes">yes — its own workspace</td></tr>
+          </tbody>
+        </table>
+
+        <div class="gk-takeaway">
+          The AI agent <b>doesn't have to be trusted</b> with group separation.
+          A bug in the agent code can't cross into another group's workspace — there's no path to ask "what's in another workspace".
+        </div>
+      </div>
+    </details>
+
+    <div class="tree" id="tree"><!-- built by JS --></div>
+
+    <div class="legend" id="legend"></div>
+
+    <div class="sessions-panel" id="sessionsPanel">
+      <h3>📦 Sessions <span class="count" id="sessCount">0</span></h3>
+      <div id="sessionGroups"></div>
+    </div>
+  </main>
+
+  <!-- Chat modal -->
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <div class="modal-hdr">
+        <h3 id="mTitle">Chat</h3>
+        <button class="close-btn" id="mClose">✕</button>
+      </div>
+      <div class="modal-suggested" id="mSuggested" style="display:none"></div>
+      <div class="modal-chat" id="mChat"><div class="empty-msg">Click a suggested prompt above or type below.</div></div>
+      <div class="modal-foot">
+        <textarea id="mInput" placeholder="Type a message — Enter to send" rows="1"></textarea>
+        <button id="mSendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ─── Config ───
+const SESSION_COLORS = ["sess-a","sess-b","sess-c","sess-d","sess-e"];
+let config = {};
+let sending = false;
+let modalMessages = [];
+let modalNode = null;
+
+// The tree data — matches the blog's two-key matrix.
+// The `prompt` strings are the live demo script: each tile, clicked in order,
+// drives the $HOME isolation showcase end-to-end.
+//   1) Alice/Thread1   → personal note in private $HOME
+//   2) Alice/Thread2   → different private workspace key → different $HOME
+//   3) Alice/#project-x→ team-level note in shared $HOME (no owner needed)
+//   4) Bob/Thread1     → list notes — empty (his private $HOME is fresh)
+//   5) Bob/#project-x  → recall standup — sees Alice's team note
+//   6) Carol (Fabrikam)/#project-x → list notes — empty (group prefix isolates)
+// NOTE: keep PERSONAL facts in private threads and TEAM facts in shared
+// channels. Mixing them confuses the agent (no owner attribution in shared
+// $HOME) and muddies the demo's isolation story.
+// Each chat node is { id, label, customer, user, mode, thread, prompt, step }
+// `step` is the demo sequence (1..6) used by the Demo Runner strip.
+const TREE = [
+  {
+    id: "contoso", name: "Contoso Ltd.", color: "#0078D4",
+    users: [
+      {
+        id: "alice", name: "Alice", color: "#0078D4",
+        chats: [
+          { step: 1, id: "c-a-t1", label: "Thread 1", mode: "private", thread: "thread-1",
+            prompt: "Remember that my project tag is ATLAS-7. Use the remember tool." },
+          { step: 2, id: "c-a-t2", label: "Thread 2", mode: "private", thread: "thread-2",
+            prompt: "Remember that my deployment region is westus3. Use the remember tool." },
+          { step: 3, id: "c-a-shared", label: "#project-x", mode: "shared", thread: "channel-projectx",
+            prompt: "Remember that the team standup is at 10am every weekday. Use the remember tool, then list my notes." },
+        ],
+      },
+      {
+        id: "bob", name: "Bob", color: "#3DA8FF",
+        chats: [
+          { step: 4, id: "c-b-t1", label: "Thread 1", mode: "private", thread: "thread-1",
+            prompt: "List my notes — what's saved in this session's $HOME?" },
+          { step: 5, id: "c-b-shared", label: "#project-x", mode: "shared", thread: "channel-projectx",
+            prompt: "List my notes and tell me when standup is." },
+        ],
+      },
+    ],
+  },
+  {
+    id: "fabrikam", name: "Fabrikam Inc.", color: "#107C10",
+    users: [
+      {
+        id: "carol", name: "Carol", color: "#107C10",
+        chats: [
+          { id: "f-c-t1", label: "Thread 1", mode: "private", thread: "thread-1",
+            prompt: "List my notes — anything in this session's $HOME?" },
+          { step: 6, id: "f-c-shared", label: "#project-x", mode: "shared", thread: "channel-projectx",
+            prompt: "List my notes and tell me when standup is." },
+        ],
+      },
+    ],
+  },
+];
+
+// Run state per chat node
+const runState = {}; // id → { sessionId, responseId, preview, ran, messages }
+function rs(id) {
+  if (!runState[id]) runState[id] = { sessionId: null, responseId: null, preview: "", ran: false, messages: [] };
+  return runState[id];
+}
+
+// Session → color mapping
+const sessColorMap = {};
+let sessColorIdx = 0;
+function sessColor(sid) {
+  if (!sid) return "";
+  if (!sessColorMap[sid]) sessColorMap[sid] = SESSION_COLORS[sessColorIdx++ % SESSION_COLORS.length];
+  return sessColorMap[sid];
+}
+
+// ─── Visitor isolation (per-browser) ───────────────────────────────────────
+// Every Pages visitor gets a stable random id stored in localStorage. We
+// silently prefix every `thread` we send to the backend with it, so two
+// people testing the demo simultaneously never collide on the same workspace
+// key. Reset rotates the id so the next chat is a fresh slate, and asks the
+// server to prune any conversation entries that belonged to the old id.
+const VID_KEY = "fa_visitor_id";
+function _newVid() {
+  const a = new Uint8Array(8);
+  crypto.getRandomValues(a);
+  return Array.from(a).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function getVisitorId() {
+  let v = localStorage.getItem(VID_KEY);
+  if (!v) { v = _newVid(); localStorage.setItem(VID_KEY, v); }
+  return v;
+}
+function threadFor(chat) {
+  return `vid-${getVisitorId()}-${chat.thread}`;
+}
+
+// Compute workspace key client-side (mirrors backend)
+async function chatKeyFor(customer, user, thread, mode) {
+  const raw = mode === "shared"
+    ? `${customer}:shared:${thread}`
+    : `${customer}:user:${user}:thread:${thread}`;
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,"0")).join("");
+  return mode === "shared"
+    ? `${customer}-shared-${hex.slice(0,24)}`
+    : `${customer}-${user}-${hex.slice(0,24)}`;
+}
+
+// Collect every chat_key currently in play for this visitor, so reset can
+// ask the server to delete them.
+async function currentVisitorChatKeys() {
+  const out = [];
+  for (const tenant of TREE) {
+    for (const user of tenant.users) {
+      for (const chat of user.chats) {
+        out.push(await chatKeyFor(tenant.id, user.id, threadFor(chat), chat.mode));
+      }
+    }
+  }
+  return out;
+}
+
+async function resetSession() {
+  if (!confirm("Reset your session?\n\nThis clears your local chat state and asks the backend to forget any conversations tied to your current visitor id. Other testers are unaffected.")) return;
+  let oldKeys = [];
+  try { oldKeys = await currentVisitorChatKeys(); } catch {}
+  try {
+    await fetch(window.api("/api/reset"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_keys: oldKeys }),
+    });
+  } catch (e) { console.warn("reset: server prune failed", e); }
+  localStorage.removeItem(VID_KEY);
+  for (const k of Object.keys(runState)) delete runState[k];
+  // Force a fresh visitor id to be generated on the next call
+  const newVid = getVisitorId();
+  document.getElementById("visitorPill").textContent = newVid.slice(0, 8);
+  buildTree();
+  toast("Session reset. New visitor id: " + newVid.slice(0, 8));
+}
+
+// ─── Build tree ───
+async function buildTree() {
+  const tree = document.getElementById("tree");
+  tree.innerHTML = "";
+
+  // Group level
+  const tenantLevel = document.createElement("div");
+  tenantLevel.className = "tree-level";
+
+  for (const tenant of TREE) {
+    const col = document.createElement("div");
+    col.style.cssText = "display:flex; flex-direction:column; align-items:center;";
+
+    // Group node
+    const tn = document.createElement("div");
+    tn.className = "node tenant";
+    tn.innerHTML = `<span class="tag">Group</span><div class="name">${esc(tenant.name)}</div>
+      <div class="detail">x-ms-user-isolation-key scopes per-user resources<br>x-ms-chat-isolation-key scopes sessions</div>`;
+    col.appendChild(tn);
+    col.appendChild(mkConn());
+
+    // Users
+    const usersRow = document.createElement("div");
+    usersRow.className = "tree-branches";
+
+    for (const user of tenant.users) {
+      const branch = document.createElement("div");
+      branch.className = "tree-branch";
+
+      // User node
+      const un = document.createElement("div");
+      un.className = "node user";
+      un.innerHTML = `<span class="tag">User</span><div class="name">${esc(user.name)}</div>
+        <div class="key"><span class="k">user-key:</span> <span class="vu">user-${esc(user.id)}</span></div>`;
+      branch.appendChild(un);
+      branch.appendChild(mkConn());
+
+      // Chats under this user
+      const chatsRow = document.createElement("div");
+      chatsRow.className = "tree-branches";
+
+      for (const chat of user.chats) {
+        const cb = document.createElement("div");
+        cb.className = "tree-branch";
+
+        const chatKey = await chatKeyFor(tenant.id, user.id, threadFor(chat), chat.mode);
+        const r = rs(chat.id);
+        const sc = sessColor(r.sessionId);
+
+        const cn = document.createElement("div");
+        cn.className = `node chat ${sc}`;
+        cn.id = `node-${chat.id}`;
+        const modeIcon = chat.mode === "shared" ? "👥" : "🔒";
+        const modeLabel = chat.mode === "shared" ? "Shared" : "Private";
+
+        let sessionHtml = "";
+        if (r.sessionId) {
+          sessionHtml = `
+            <button class="session-badge live" data-chat="${chat.id}" title="Click to resume this session"
+              style="background:var(--good); cursor:pointer; border:none; font:inherit; font-size:10px; font-weight:600; color:white; padding:3px 10px; border-radius:999px">
+              🔄 Session ${esc(r.sessionId.slice(0,10))}… — click to resume
+            </button>`;
+        } else {
+          sessionHtml = `<span class="session-badge pending">no session yet</span>`;
+        }
+
+        const preview = r.preview
+          ? `<div class="preview">${esc(r.preview.slice(0,100))}${r.preview.length > 100 ? "…" : ""}</div>`
+          : "";
+        const btnLabel = r.ran ? "💬 Continue chat" : "▶ Run";
+        const btnClass = r.ran ? "run-btn done" : "run-btn";
+
+        cn.innerHTML = `
+          <span class="tag">${modeIcon} ${modeLabel} chat</span>
+          <div class="name">${esc(chat.label)}</div>
+          <div class="key"><span class="k">workspace-key:</span> <span class="vc">${esc(chatKey)}</span></div>
+          ${sessionHtml}
+          ${preview}
+          <button class="${btnClass}" data-chat="${chat.id}">${btnLabel}</button>
+        `;
+        cn.querySelector(".run-btn").onclick = (e) => {
+          e.stopPropagation();
+          openModal(tenant, user, chat, chatKey, { autoSend: true });
+        };
+        const sessBadge = cn.querySelector(".session-badge.live");
+        if (sessBadge) {
+          sessBadge.onclick = (e) => {
+            e.stopPropagation();
+            openModal(tenant, user, chat, chatKey, { autoSend: false });
+          };
+        }
+        cn.onclick = () => openModal(tenant, user, chat, chatKey, { autoSend: false });
+
+        cb.appendChild(cn);
+        chatsRow.appendChild(cb);
+      }
+      branch.appendChild(chatsRow);
+      usersRow.appendChild(branch);
+    }
+    col.appendChild(usersRow);
+    tenantLevel.appendChild(col);
+  }
+  tree.appendChild(tenantLevel);
+  buildLegend();
+  buildSessionsPanel();
+}
+
+function mkConn() {
+  const d = document.createElement("div");
+  d.className = "tree-connector";
+  return d;
+}
+
+function buildLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  if (!Object.keys(sessColorMap).length) {
+    el.innerHTML = `<span style="color:var(--muted)">Run chat nodes to see session ids appear. Nodes with the same session id get the same colored border — proving shared or isolated sessions.</span>`;
+    return;
+  }
+  for (const [sid, cls] of Object.entries(sessColorMap)) {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    const swatch = document.createElement("div");
+    swatch.className = `swatch`;
+    swatch.style.borderColor = getComputedStyle(document.querySelector(`.${cls}`) || document.body).borderColor || "var(--good)";
+    swatch.style.background = "var(--panel2)";
+    item.appendChild(swatch);
+    const label = document.createElement("span");
+    label.textContent = `Session ${sid.slice(0,12)}…`;
+    item.appendChild(label);
+    el.appendChild(item);
+  }
+}
+
+function buildSessionsPanel() {
+  const el = document.getElementById("sessionGroups");
+  const countEl = document.getElementById("sessCount");
+
+  // Group all chat nodes by sessionId — include nodes that have a sessionId
+  // even if they haven't been explicitly "ran" (e.g., shared-channel inheritance).
+  const groups = {}; // sessionId → [{chatId, tenant, user, chat, chatKey}]
+  for (const tenant of TREE) {
+    for (const user of tenant.users) {
+      for (const chat of user.chats) {
+        const r = rs(chat.id);
+        if (!r.sessionId) continue;
+        if (!groups[r.sessionId]) groups[r.sessionId] = [];
+        groups[r.sessionId].push({
+          chatId: chat.id,
+          tenantName: tenant.name, tenantId: tenant.id,
+          userName: user.name, userId: user.id,
+          chatLabel: chat.label, mode: chat.mode, thread: chat.thread,
+          preview: r.preview,
+          ran: r.ran,
+          tenant, user, chat,
+        });
+      }
+    }
+  }
+
+  const sessionIds = Object.keys(groups);
+  countEl.textContent = sessionIds.length;
+
+  if (!sessionIds.length) {
+    el.innerHTML = `<div class="sessions-empty">No sessions yet — run some chat nodes above to see sessions appear here as visual containers.</div>`;
+    return;
+  }
+
+  el.innerHTML = "";
+  for (const sid of sessionIds) {
+    const members = groups[sid];
+    const sc = sessColor(sid);
+    const bubble = document.createElement("div");
+    bubble.className = `session-bubble ${sc}`;
+
+    const uniqueUsers = [...new Set(members.map(m => m.userId))];
+    const uniqueTenants = [...new Set(members.map(m => m.tenantId))];
+    const sharedMembers = members.filter(m => m.mode === "shared");
+    const isSharedChannel = sharedMembers.length > 0;
+    const multiUser = uniqueUsers.length > 1;
+
+    let verdictHtml = "";
+    if (isSharedChannel && multiUser) {
+      verdictHtml = `<div class="sess-verdict"><b>✅ Shared session — ${uniqueUsers.length} users collaborating</b> in the same conversation. Workspace keys matched because shared mode omits the user from the derivation. Each user's per-user resources (OAuth, memory) remain private via their distinct user-key.</div>`;
+    } else if (isSharedChannel && !multiUser) {
+      verdictHtml = `<div class="sess-verdict"><b>👥 Shared channel — only ${members[0].userName} has joined so far.</b> When another user in the same group opens this channel, they will derive the same workspace key and land in this same conversation.</div>`;
+    } else if (members.length > 1) {
+      verdictHtml = `<div class="sess-verdict"><b>✅ Same session resumed</b> — multiple turns from the same user in the same private thread. Conversation history preserved via <code>agent_session_id</code> chaining.</div>`;
+    } else {
+      const m = members[0];
+      verdictHtml = `<div class="sess-verdict"><b>🔒 Isolated private session</b> — only ${m.userName} (${m.tenantName}) can access. Other users — even within the same group — will derive different workspace keys for the same thread name.</div>`;
+    }
+
+    const membersHtml = members.map(m => {
+      const modeIcon = m.mode === "shared" ? "👥" : "🔒";
+      return `<div class="sess-member" data-chat="${m.chatId}">
+        <span class="sm-icon">${modeIcon}</span>
+        <div class="sm-info">
+          <span class="sm-name">${esc(m.tenantName)} › ${esc(m.userName)}</span>
+          <span class="sm-detail">${esc(m.chatLabel)} · ${m.mode}</span>
+          ${m.preview ? `<span class="sm-preview">${esc(m.preview.slice(0,80))}${m.preview.length > 80 ? "…" : ""}</span>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+
+    bubble.innerHTML = `
+      <div class="sess-hdr">
+        <span class="sess-id">Session ${esc(sid.slice(0,16))}…</span>
+        <span class="sess-label">${members.length} participant${members.length > 1 ? "s" : ""} · ${uniqueTenants.length} group${uniqueTenants.length > 1 ? "s" : ""}</span>
+      </div>
+      <div class="sess-members">${membersHtml}</div>
+      ${verdictHtml}
+    `;
+
+    // Click a member to open their chat modal
+    bubble.querySelectorAll(".sess-member").forEach(el => {
+      el.onclick = () => {
+        const chatId = el.dataset.chat;
+        const m = members.find(x => x.chatId === chatId);
+        if (m) {
+          chatKeyFor(m.tenantId, m.userId, m.thread, m.mode).then(ck => {
+            openModal(m.tenant, m.user, m.chat, ck, { autoSend: false });
+          });
+        }
+      };
+    });
+
+    el.appendChild(bubble);
+  }
+}
+
+// ─── Modal ───
+function openModal(tenant, user, chat, chatKey, opts = {}) {
+  modalNode = { tenant, user, chat, chatKey };
+  const r = rs(chat.id);
+  // Restore prior conversation from client state
+  modalMessages = r.messages.length ? [...r.messages] : [];
+  document.getElementById("mTitle").textContent =
+    r.ran
+      ? `${tenant.name} › ${user.name} › ${chat.label} — resuming session`
+      : `${tenant.name} › ${user.name} › ${chat.label} (${chat.mode})`;
+  const sg = document.getElementById("mSuggested");
+  sg.style.display = "";
+  const resumePrompt = r.ran ? "Recall the project tag and standup time from my notes." : "";
+  sg.innerHTML = `<span class="lbl">Suggested:</span>
+    <button class="send-chip" data-prompt="${esc(chat.prompt)}">📤 ${esc(chat.prompt)}</button>
+    ${r.ran ? `<button class="send-chip" data-prompt="${esc(resumePrompt)}">🔄 ${esc(resumePrompt)}</button>` : ""}
+    <button class="send-chip" id="loadHistoryBtn">📜 Load history from server</button>`;
+  sg.querySelectorAll(".send-chip[data-prompt]").forEach(b => {
+    b.onclick = function() { sendModal(this.dataset.prompt); };
+  });
+  document.getElementById("loadHistoryBtn").onclick = () => loadHistory(tenant, user, chat);
+  renderModalChat();
+  document.getElementById("modal").classList.add("open");
+  document.getElementById("mInput").focus();
+
+  // Auto-send the suggested prompt so the demo is fully click-driven.
+  // Pass { autoSend: false } to suppress (e.g., when resuming via session badge).
+  if (opts.autoSend !== false) {
+    const promptToSend = opts.prompt || chat.prompt;
+    if (promptToSend) {
+      setTimeout(() => sendModal(promptToSend), 120);
+    }
+  }
+}
+function closeModal() {
+  // Persist messages to runState before closing
+  if (modalNode) {
+    const r = rs(modalNode.chat.id);
+    r.messages = [...modalMessages];
+  }
+  document.getElementById("modal").classList.remove("open");
+  buildTree();
+}
+
+async function loadHistory(tenant, user, chat) {
+  try {
+    const params = new URLSearchParams({
+      customer: tenant.id, user: user.id,
+      thread: threadFor(chat), share_mode: chat.mode,
+    });
+    const resp = await fetch(window.api(`/api/history?${params}`));
+    if (resp.status === 404) {
+      toast("Server-side history is disabled on this public demo.");
+      return;
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const turns = data.turns || [];
+    if (!turns.length) {
+      toast("No previous messages found for this workspace key on the server.");
+      return;
+    }
+    // Hydrate the modal with server-side history
+    modalMessages = turns.map(t => ({
+      role: t.role === "assistant" ? "bot" : "user",
+      text: t.text,
+      stamp: t.role === "assistant" ? `restored from server · ${t.ts || ""}` : "",
+    }));
+    // Also update runState so the node reflects the history
+    const r = rs(chat.id);
+    if (data.session_id) r.sessionId = data.session_id;
+    if (data.response_id) r.responseId = data.response_id;
+    r.ran = true;
+    r.messages = [...modalMessages];
+    const lastBot = modalMessages.filter(m => m.role === "bot").pop();
+    if (lastBot) r.preview = lastBot.text.replace(/\s+/g," ").trim();
+    renderModalChat();
+    toast(`Loaded ${turns.length} messages from server.`);
+  } catch (e) {
+    toast("Failed to load history: " + e.message);
+  }
+}
+document.getElementById("mClose").onclick = closeModal;
+document.getElementById("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+function renderModalChat() {
+  const el = document.getElementById("mChat");
+  el.innerHTML = "";
+  if (!modalMessages.length) {
+    el.innerHTML = `<div class="empty-msg">Click a suggested prompt above or type below.</div>`;
+    return;
+  }
+  for (const m of modalMessages) {
+    const w = document.createElement("div");
+    w.className = `msg ${m.role}`;
+    const b = document.createElement("div");
+    b.className = "bubble";
+    if (m.role === "bot" && m.streaming && !m.text)
+      b.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+    else b.innerHTML = mdToHtml(m.text || "");
+    w.appendChild(b);
+    if (m.stamp) { const s = document.createElement("div"); s.className = "stamp"; s.textContent = m.stamp; w.appendChild(s); }
+    el.appendChild(w);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── Send ───
+const mInput = document.getElementById("mInput");
+mInput.addEventListener("input", () => { mInput.style.height = "auto"; mInput.style.height = Math.min(150,mInput.scrollHeight) + "px"; });
+mInput.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = mInput.value.trim(); if (v) { mInput.value = ""; mInput.style.height = "auto"; sendModal(v); } }
+});
+document.getElementById("mSendBtn").onclick = () => {
+  const v = mInput.value.trim(); if (v) { mInput.value = ""; mInput.style.height = "auto"; sendModal(v); }
+};
+
+async function sendModal(text) {
+  if (sending || !modalNode) return;
+  sending = true;
+  const { tenant, user, chat } = modalNode;
+  const r = rs(chat.id);
+
+  // For shared channels: if this node has no responseId yet, inherit from
+  // another node that shares the same workspace key (e.g., Alice already posted
+  // in #project-x and Bob is joining the same channel).
+  if (!r.responseId && chat.mode === "shared") {
+    for (const t of TREE) {
+      if (t.id !== tenant.id) continue;
+      for (const u of t.users) {
+        for (const c of u.chats) {
+          if (c.id === chat.id) continue;
+          if (c.mode === "shared" && c.thread === chat.thread) {
+            const donor = rs(c.id);
+            if (donor.responseId) {
+              r.responseId = donor.responseId;
+              r.sessionId = donor.sessionId;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const userMsg = { role: "user", text };
+  const botMsg = { role: "bot", text: "", streaming: true, stamp: "" };
+  modalMessages.push(userMsg, botMsg);
+  renderModalChat();
+
+  try {
+    const resp = await fetch(window.api("/api/chat"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+      body: JSON.stringify({
+        customer: tenant.id, user: user.id,
+        thread: threadFor(chat), share_mode: chat.mode,
+        message: text,
+        session_id: r.sessionId,
+        previous_response_id: r.responseId,
+        visitor_id: getVisitorId(),
+      }),
+    });
+    if (resp.status === 429 || resp.status === 503) {
+      const detail = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+      botMsg.streaming = false;
+      botMsg.text = `⛔ ${detail.detail || "Rate limited."}`;
+      botMsg.stamp = `demo limit · ${resp.status}`;
+      renderModalChat();
+      toast(detail.detail || `Rate limited (${resp.status})`);
+      return;
+    }
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+    await consumeSSE(resp.body, (event, data) => {
+      if (event === "meta") {
+        botMsg.stamp = `${tenant.id}/${user.id} · ${chat.mode} · corr:${(data.correlation_id||"").slice(0,8)}`;
+        renderModalChat();
+      } else if (event === "session" && data.agent_session_id) {
+        r.sessionId = data.agent_session_id;
+        if (data.response_id) r.responseId = data.response_id;
+      } else if (event === "response_id" && data.response_id) {
+        r.responseId = data.response_id;
+      } else if (event === "response.output_text.delta") {
+        botMsg.text += data.delta || "";
+        botMsg.streaming = true;
+        renderModalChat();
+      } else if (!event) {
+        const d = extractDelta(data);
+        if (d) { botMsg.text += d; botMsg.streaming = true; renderModalChat(); }
+      } else if (event === "error") {
+        botMsg.text += `\n(error: ${data.message || JSON.stringify(data)})`;
+        renderModalChat();
+      }
+    });
+  } catch (e) {
+    botMsg.text += `\n(failed: ${e.message})`;
+    toast(e.message);
+  } finally {
+    botMsg.streaming = false;
+    renderModalChat();
+    r.ran = true;
+    r.preview = botMsg.text.replace(/\s+/g," ").trim();
+    r.messages = [...modalMessages];
+    sending = false;
+    // Refresh the Demo Runner strip so the just-completed step shows as done
+    // and the "next" highlight advances.
+    try { renderDemoRunner(); } catch {}
+  }
+}
+
+// ─── SSE parser ───
+async function consumeSSE(body, onEvent) {
+  const reader = body.getReader(), decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) !== -1) {
+      const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      let event = "", dataLines = [];
+      for (const l of frame.split(/\r?\n/)) {
+        if (!l || l.startsWith(":")) continue;
+        if (l.startsWith("event:")) event = l.slice(6).trim();
+        else if (l.startsWith("data:")) dataLines.push(l.slice(5).trim());
+      }
+      if (!dataLines.length) continue;
+      const ds = dataLines.join("\n");
+      if (event) { let p; try { p = JSON.parse(ds); } catch { p = ds; } onEvent(event, p); }
+      else onEvent("", ds);
+    }
+  }
+}
+function extractDelta(raw) {
+  if (!raw || raw === "[DONE]") return "";
+  try {
+    const o = JSON.parse(raw);
+    if (typeof o.delta === "string") return o.delta;
+    if (o.type === "response.output_text.delta" && o.delta) return o.delta;
+    if (o.choices?.[0]?.delta?.content) return o.choices[0].delta.content;
+  } catch {}
+  return "";
+}
+
+// ─── Helpers ───
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]); }
+function mdToHtml(t) {
+  let h = esc(t);
+  h = h.replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c}</pre>`);
+  h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+  h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  h = h.replace(/\n/g, "<br>");
+  return h;
+}
+function toast(msg) { const e = document.createElement("div"); e.className = "toast"; e.textContent = msg; document.body.appendChild(e); setTimeout(() => e.remove(), 4500); }
+
+// ─── Init ───
+function renderDemoRunner() { /* runner UI removed — tiles auto-send on click */ }
+
+async function init() {
+  try {
+    const [_, cfg] = await Promise.all([
+      fetch(window.api("/api/customers")).then(r => r.json()),
+      fetch(window.api("/api/config")).then(r => r.json()),
+    ]);
+    config = cfg;
+    document.getElementById("modePill").textContent = "foundry";
+    document.getElementById("agentPill").textContent = cfg.agent_name;
+    document.getElementById("visitorPill").textContent = getVisitorId().slice(0, 8);
+    document.getElementById("resetBtn").addEventListener("click", resetSession);
+  } catch (e) { toast("Failed to load: " + e.message); }
+  await buildTree();
+  renderDemoRunner();
+}
+init();
+
+// Initialize the request router diagram. Render eagerly (panel is open by default
+// for the talk) and also on each subsequent toggle in case it's closed and
+// reopened.
+function initRequestRouterDiagram() {
+  console.log("[gk] init — mermaid loaded?", !!window.mermaid);
+  if (!window.mermaid) {
+    setTimeout(initRequestRouterDiagram, 200);
+    return;
+  }
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "default",
+      securityLevel: "loose",
+      flowchart: { htmlLabels: true, useMaxWidth: true },
+    });
+  } catch (e) { console.warn("[gk] mermaid.initialize", e); }
+
+  const gkPanel = document.getElementById("gkPanel");
+  console.log("[gk] panel found?", !!gkPanel, "open?", gkPanel?.open);
+  if (!gkPanel) return;
+  let gkRendered = false;
+  const renderOnce = async () => {
+    if (gkRendered) return;
+    gkRendered = true;
+    console.log("[gk] rendering mermaid diagram");
+    try {
+      await mermaid.run({ querySelector: "#gkPanel .mermaid" });
+      console.log("[gk] mermaid rendered ✅");
+    } catch (e) {
+      console.error("[gk] mermaid render failed", e);
+      gkRendered = false;
+    }
+  };
+  if (gkPanel.open) renderOnce();
+  gkPanel.addEventListener("toggle", () => { if (gkPanel.open) renderOnce(); });
+}
+initRequestRouterDiagram();
+</script>
+</body>
+</html>
